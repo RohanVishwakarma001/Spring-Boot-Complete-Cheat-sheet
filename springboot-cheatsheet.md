@@ -1357,8 +1357,514 @@ logging.level.com.example=DEBUG
 
 ---
 
+## Additional Advanced Topics
+
+### 1. Spring Boot Actuator
+
+#### Actuator Dependencies
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+```
+
+#### Actuator Endpoints Configuration
+```properties
+# application.properties
+management.endpoints.web.exposure.include=health,info,metrics,env,configprops
+management.endpoint.health.show-details=always
+management.endpoint.info.enabled=true
+management.info.env.enabled=true
+```
+
+#### Custom Health Indicators
+```java
+@Component
+public class DatabaseHealthIndicator implements HealthIndicator {
+    
+    @Autowired
+    private DataSource dataSource;
+    
+    @Override
+    public Health health() {
+        try (Connection connection = dataSource.getConnection()) {
+            if (connection.isValid(1)) {
+                return Health.up()
+                    .withDetail("database", "Available")
+                    .withDetail("validationQuery", "SELECT 1")
+                    .build();
+            }
+        } catch (SQLException e) {
+            return Health.down()
+                .withDetail("database", "Unavailable")
+                .withDetail("error", e.getMessage())
+                .build();
+        }
+        return Health.down().build();
+    }
+}
+```
+
+### 2. Spring Boot Admin
+
+#### Admin Server Setup
+```java
+@SpringBootApplication
+@EnableAdminServer
+public class AdminServerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(AdminServerApplication.class, args);
+    }
+}
+```
+
+#### Client Configuration
+```properties
+# application.properties
+spring.boot.admin.client.url=http://localhost:8080
+spring.boot.admin.client.instance.service-url=http://localhost:8081
+```
+
+### 3. Spring Cloud Integration
+
+#### Service Discovery with Consul
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+public class UserServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(UserServiceApplication.class, args);
+    }
+}
+```
+
+#### Configuration Server
+```java
+@SpringBootApplication
+@EnableConfigServer
+public class ConfigServerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(ConfigServerApplication.class, args);
+    }
+}
+```
+
+### 4. Advanced Security Features
+
+#### OAuth2 Resource Server
+```java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(authz -> authz
+                .requestMatchers("/api/public/**").permitAll()
+                .anyRequest().authenticated()
+            )
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt
+                    .jwtAuthenticationConverter(jwtAuthenticationConverter())
+                )
+            );
+        
+        return http.build();
+    }
+    
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
+        authoritiesConverter.setAuthorityPrefix("ROLE_");
+        authoritiesConverter.setAuthoritiesClaimName("roles");
+        
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
+        return converter;
+    }
+}
+```
+
+#### Method Level Security
+```java
+@Service
+public class UserService {
+    
+    @PreAuthorize("hasRole('ADMIN') or #user.id == authentication.principal.id")
+    public User updateUser(User user) {
+        return userRepository.save(user);
+    }
+    
+    @PostAuthorize("returnObject.owner == authentication.principal.username")
+    public User findUserById(Long id) {
+        return userRepository.findById(id).orElse(null);
+    }
+}
+```
+
+### 5. Advanced JPA Features
+
+#### Custom Repository Implementation
+```java
+public interface UserRepositoryCustom {
+    List<User> findUsersWithComplexCriteria(UserSearchCriteria criteria);
+}
+
+@Repository
+public class UserRepositoryImpl implements UserRepositoryCustom {
+    
+    @PersistenceContext
+    private EntityManager entityManager;
+    
+    @Override
+    public List<User> findUsersWithComplexCriteria(UserSearchCriteria criteria) {
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<User> query = cb.createQuery(User.class);
+        Root<User> user = query.from(User.class);
+        
+        List<Predicate> predicates = new ArrayList<>();
+        
+        if (criteria.getName() != null) {
+            predicates.add(cb.like(user.get("name"), "%" + criteria.getName() + "%"));
+        }
+        
+        if (criteria.getMinAge() != null) {
+            predicates.add(cb.greaterThanOrEqualTo(user.get("age"), criteria.getMinAge()));
+        }
+        
+        query.where(predicates.toArray(new Predicate[0]));
+        
+        return entityManager.createQuery(query).getResultList();
+    }
+}
+```
+
+#### Entity Listeners
+```java
+@Entity
+@EntityListeners(UserEntityListener.class)
+public class User {
+    // ... entity fields
+    
+    @PrePersist
+    public void prePersist() {
+        this.createdAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    public void preUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+}
+
+@Component
+public class UserEntityListener {
+    
+    @PrePersist
+    public void prePersist(User user) {
+        // Custom logic before persisting
+        user.setCreatedBy(getCurrentUser());
+    }
+    
+    @PreUpdate
+    public void preUpdate(User user) {
+        // Custom logic before updating
+        user.setUpdatedBy(getCurrentUser());
+    }
+    
+    private String getCurrentUser() {
+        // Get current user from security context
+        return SecurityContextHolder.getContext()
+            .getAuthentication().getName();
+    }
+}
+```
+
+### 6. Advanced Caching Strategies
+
+#### Cache Configuration with TTL
+```java
+@Configuration
+@EnableCaching
+public class CacheConfig {
+    
+    @Bean
+    public CacheManager cacheManager() {
+        CaffeineCacheManager cacheManager = new CaffeineCacheManager();
+        cacheManager.setCaffeine(Caffeine.newBuilder()
+            .maximumSize(1000)
+            .expireAfterWrite(10, TimeUnit.MINUTES)
+            .expireAfterAccess(5, TimeUnit.MINUTES)
+            .recordStats());
+        return cacheManager;
+    }
+}
+```
+
+#### Conditional Caching
+```java
+@Service
+public class UserService {
+    
+    @Cacheable(value = "users", key = "#id", condition = "#id > 0")
+    public User findById(Long id) {
+        return userRepository.findById(id).orElse(null);
+    }
+    
+    @CacheEvict(value = "users", key = "#user.id", condition = "#user.id != null")
+    public User updateUser(User user) {
+        return userRepository.save(user);
+    }
+    
+    @CachePut(value = "users", key = "#result.id", condition = "#result != null")
+    public User createUser(User user) {
+        return userRepository.save(user);
+    }
+}
+```
+
+### 7. Advanced Async Processing
+
+#### CompletableFuture with Exception Handling
+```java
+@Service
+public class AsyncUserService {
+    
+    @Async("taskExecutor")
+    public CompletableFuture<User> processUserAsync(Long userId) {
+        try {
+            User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+            
+            // Simulate processing
+            Thread.sleep(2000);
+            
+            return CompletableFuture.completedFuture(user);
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+    
+    @Async("taskExecutor")
+    public CompletableFuture<List<User>> processMultipleUsersAsync(List<Long> userIds) {
+        List<CompletableFuture<User>> futures = userIds.stream()
+            .map(this::processUserAsync)
+            .collect(Collectors.toList());
+        
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+            .thenApply(v -> futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList()));
+    }
+}
+```
+
+### 8. Advanced Testing Strategies
+
+#### TestContainers Integration
+```java
+@SpringBootTest
+@Testcontainers
+class UserServiceIntegrationTest {
+    
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:13")
+            .withDatabaseName("testdb")
+            .withUsername("test")
+            .withPassword("test");
+    
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+    }
+    
+    @Test
+    void shouldCreateAndRetrieveUser() {
+        // Test implementation
+    }
+}
+```
+
+#### MockMvc with Custom Matchers
+```java
+@WebMvcTest(UserController.class)
+class UserControllerTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @MockBean
+    private UserService userService;
+    
+    @Test
+    void shouldReturnUserWithValidId() throws Exception {
+        User user = new User("John Doe", "john@example.com");
+        when(userService.findById(1L)).thenReturn(user);
+        
+        mockMvc.perform(get("/api/users/1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.name", is("John Doe")))
+            .andExpect(jsonPath("$.email", is("john@example.com")))
+            .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+    }
+}
+```
+
+### 9. Performance Monitoring
+
+#### Custom Metrics with Micrometer
+```java
+@Component
+public class UserMetrics {
+    
+    private final Counter userCreatedCounter;
+    private final Timer userProcessingTimer;
+    private final Gauge activeUsersGauge;
+    
+    public UserMetrics(MeterRegistry meterRegistry) {
+        this.userCreatedCounter = Counter.builder("users.created")
+            .description("Number of users created")
+            .register(meterRegistry);
+        
+        this.userProcessingTimer = Timer.builder("users.processing.time")
+            .description("Time taken to process user")
+            .register(meterRegistry);
+        
+        this.activeUsersGauge = Gauge.builder("users.active")
+            .description("Number of active users")
+            .register(meterRegistry, this, UserMetrics::getActiveUsersCount);
+    }
+    
+    public void incrementUserCreated() {
+        userCreatedCounter.increment();
+    }
+    
+    public void recordUserProcessingTime(Duration duration) {
+        userProcessingTimer.record(duration);
+    }
+    
+    private double getActiveUsersCount() {
+        // Return active users count
+        return 0.0;
+    }
+}
+```
+
+### 10. Advanced Configuration
+
+#### Conditional Configuration
+```java
+@Configuration
+@ConditionalOnProperty(name = "app.feature.enabled", havingValue = "true")
+public class FeatureConfig {
+    
+    @Bean
+    @ConditionalOnMissingBean
+    public FeatureService featureService() {
+        return new DefaultFeatureService();
+    }
+}
+
+@Configuration
+@ConditionalOnClass(RedisTemplate.class)
+public class RedisConfig {
+    
+    @Bean
+    @ConditionalOnMissingBean
+    public RedisTemplate<String, Object> redisTemplate() {
+        return new RedisTemplate<>();
+    }
+}
+```
+
+#### Environment-specific Beans
+```java
+@Configuration
+public class DatabaseConfig {
+    
+    @Bean
+    @Profile("dev")
+    public DataSource devDataSource() {
+        return new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .build();
+    }
+    
+    @Bean
+    @Profile("prod")
+    public DataSource prodDataSource() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl("jdbc:mysql://localhost:3306/proddb");
+        config.setUsername("produser");
+        config.setPassword("prodpass");
+        return new HikariDataSource(config);
+    }
+}
+```
+
+---
+
+## Common Patterns and Solutions
+
+### 1. Pagination Pattern
+```java
+@GetMapping
+public Page<User> getUsers(
+    @RequestParam(defaultValue = "0") int page,
+    @RequestParam(defaultValue = "10") int size,
+    @RequestParam(defaultValue = "id") String sortBy) {
+    
+    Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
+    return userService.findAll(pageable);
+}
+```
+
+### 2. Search and Filter Pattern
+```java
+@GetMapping("/search")
+public Page<User> searchUsers(
+    @RequestParam(required = false) String name,
+    @RequestParam(required = false) String email,
+    @RequestParam(required = false) Integer minAge,
+    @RequestParam(required = false) Integer maxAge,
+    Pageable pageable) {
+    
+    UserSearchCriteria criteria = new UserSearchCriteria(name, email, minAge, maxAge);
+    return userService.searchUsers(criteria, pageable);
+}
+```
+
+### 3. Bulk Operations Pattern
+```java
+@PostMapping("/bulk")
+public ResponseEntity<List<User>> createUsersBulk(@RequestBody List<User> users) {
+    List<User> createdUsers = userService.createUsersBulk(users);
+    return ResponseEntity.status(HttpStatus.CREATED).body(createdUsers);
+}
+```
+
+### 4. File Upload Pattern
+```java
+@PostMapping("/upload")
+public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+    if (file.isEmpty()) {
+        return ResponseEntity.badRequest().body("File is empty");
+    }
+    
+    String fileName = fileStorageService.storeFile(file);
+    return ResponseEntity.ok("File uploaded successfully: " + fileName);
+}
+```
+
+---
+
 ## Best Practices
 
+### Code Organization
 1. **Use @RestController for REST APIs**
 2. **Implement proper exception handling**
 3. **Use DTOs for data transfer**
@@ -1369,11 +1875,42 @@ logging.level.com.example=DEBUG
 8. **Write comprehensive tests**
 9. **Use connection pooling**
 10. **Implement caching where appropriate**
+
+### Performance
 11. **Use async processing for long-running tasks**
 12. **Monitor application health**
 13. **Use proper security measures**
 14. **Optimize database queries**
 15. **Use proper error messages**
+16. **Implement circuit breakers for external services**
+17. **Use connection pooling effectively**
+18. **Monitor memory usage and GC performance**
+19. **Implement proper indexing strategies**
+20. **Use batch processing for bulk operations**
+
+### Security
+21. **Validate all input data**
+22. **Use HTTPS in production**
+23. **Implement proper authentication and authorization**
+24. **Use environment variables for sensitive data**
+25. **Regular security updates**
+26. **Implement rate limiting**
+27. **Use secure session management**
+28. **Implement proper CORS policies**
+29. **Use security headers**
+30. **Regular security audits**
+
+### Testing
+31. **Write unit tests for all business logic**
+32. **Implement integration tests for APIs**
+33. **Use test containers for database testing**
+34. **Mock external dependencies**
+35. **Test error scenarios**
+36. **Implement performance tests**
+37. **Use test profiles**
+38. **Test security configurations**
+39. **Implement contract testing**
+40. **Use code coverage tools**
 
 ---
 
