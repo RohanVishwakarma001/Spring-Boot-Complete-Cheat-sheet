@@ -184,10 +184,6 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 - [Stack Overflow Spring Boot](https://stackoverflow.com/questions/tagged/spring-boot)
 - [Spring Boot GitHub](https://github.com/spring-projects/spring-boot)
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 🙏 Acknowledgments
 
 - Spring Framework team for creating an amazing framework
