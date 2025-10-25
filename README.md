@@ -202,4 +202,4 @@ If you have any questions or need help:
 
 **Happy Coding with Spring Boot! 🚀**
 
-*Last updated: December 2024*
+*Last updated: October 2025*
